@@ -1,0 +1,480 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature/**
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: my-app
+  REGISTRY: ghcr.io
+
+jobs:
+  # ===== CODE QUALITY & SECURITY =====
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint flake8 black isort bandit
+
+      - name: Run Pylint
+        continue-on-error: true
+        run: |
+          find . -name "*.py" -type f ! -path "./.*" | \
+          xargs pylint --disable=all --enable=E,F --fail-under=9.0
+
+      - name: Run Flake8
+        continue-on-error: true
+        run: flake8 src/ --count --show-source --statistics --max-line-length=100
+
+      - name: Check code formatting with Black
+        run: black --check src/ tests/ --line-length=100
+
+      - name: Check import sorting with isort
+        run: isort --check-only src/ tests/ --profile black
+
+      - name: Security scanning with Bandit
+        continue-on-error: true
+        run: bandit -r src/ -f json -o bandit-report.json
+
+  # ===== UNIT & INTEGRATION TESTS =====
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          pip install -r src/app/requirements.txt
+          pip install -r src/lambda/requirements.txt
+          pip install pytest pytest-cov pytest-mock moto
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  # ===== TERRAFORM VALIDATION =====
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init -backend=false
+
+      - name: Terraform validate
+        run: |
+          cd terraform
+          terraform validate
+
+  # ===== BUILD DOCKER IMAGE =====
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [code-quality, tests, terraform-validate]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v4
+        with:
+          context: src/app
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===== TERRAFORM PLAN =====
+  terraform-plan:
+    name: Terraform Plan - ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    needs: build-image
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        environment: [dev, staging]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=ci-cd-pipeline/${{ matrix.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform plan
+        run: |
+          cd terraform
+          terraform plan \
+            -var-file="environments/${{ matrix.environment }}.tfvars" \
+            -var="image_tag=${{ needs.build-image.outputs.image-tag }}" \
+            -out=tfplan
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: terraform/tfplan
+
+      - name: Comment PR with plan
+        if: github.event_name == 'pull_request'
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+  # ===== DEPLOY DEV =====
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, build-image]
+    if: github.ref == 'refs/heads/develop'
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-dev
+          path: terraform/
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=ci-cd-pipeline/dev/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Get deployment outputs
+        id: deploy
+        run: |
+          cd terraform
+          echo "ecs_cluster=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_OUTPUT
+          echo "ecs_service=$(terraform output -raw ecs_service_name)" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --service ${{ steps.deploy.outputs.ecs_service }} \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --services ${{ steps.deploy.outputs.ecs_service }}
+
+      - name: Run health checks
+        run: python scripts/health-check.py dev
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "Dev deployment ${{ job.status }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ===== DEPLOY STAGING =====
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, build-image]
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-staging
+          path: terraform/
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=ci-cd-pipeline/staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Get deployment outputs
+        id: deploy
+        run: |
+          cd terraform
+          echo "ecs_cluster=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_OUTPUT
+          echo "ecs_service=$(terraform output -raw ecs_service_name)" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --service ${{ steps.deploy.outputs.ecs_service }} \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --services ${{ steps.deploy.outputs.ecs_service }}
+
+      - name: Run health checks
+        run: python scripts/health-check.py staging
+
+      - name: Run smoke tests
+        run: pytest tests/test_smoke.py -v
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "Staging deployment ${{ job.status }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ===== PRODUCTION APPROVAL GATE =====
+  approve-production:
+    name: Approve Production Deployment
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check approval status
+        run: echo "Production deployment approved"
+
+  # ===== DEPLOY PRODUCTION =====
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [approve-production, build-image]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=ci-cd-pipeline/prod/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform plan
+        run: |
+          cd terraform
+          terraform plan \
+            -var-file="environments/prod.tfvars" \
+            -var="image_tag=${{ needs.build-image.outputs.image-tag }}" \
+            -out=tfplan
+
+      - name: Terraform apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Get deployment outputs
+        id: deploy
+        run: |
+          cd terraform
+          echo "ecs_cluster=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_OUTPUT
+          echo "ecs_service=$(terraform output -raw ecs_service_name)" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --service ${{ steps.deploy.outputs.ecs_service }} \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ steps.deploy.outputs.ecs_cluster }} \
+            --services ${{ steps.deploy.outputs.ecs_service }}
+
+      - name: Run health checks
+        run: python scripts/health-check.py prod
+
+      - name: Run smoke tests
+        run: pytest tests/test_smoke.py -v
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "Production deployment ${{ job.status }} by ${{ github.actor }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Create deployment annotation in CloudWatch
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "MyApp/Deployments" \
+            --metric-name "LastDeployment" \
+            --value 1 \
+            --dimensions Environment=prod Version=${{ github.sha }}
