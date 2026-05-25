@@ -1,8 +1,8 @@
 # Production Environment Configuration
-environment      = "prod"
-aws_region       = "us-east-1"
-project_name     = "my-app"
-vpc_cidr         = "10.2.0.0/16"
+environment        = "prod"
+aws_region         = "us-east-1"
+project_name       = "my-app"
+vpc_cidr           = "10.2.0.0/16"
 availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
 # ECS Configuration

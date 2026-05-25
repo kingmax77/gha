@@ -101,9 +101,9 @@ resource "aws_cloudwatch_dashboard" "main" {
       {
         type = "log"
         properties = {
-          query   = "fields @timestamp, @message | stats count() by @message | limit 20"
-          region  = var.aws_region
-          title   = "Recent Errors"
+          query  = "fields @timestamp, @message | stats count() by @message | limit 20"
+          region = var.aws_region
+          title  = "Recent Errors"
         }
       }
     ]
@@ -215,7 +215,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   namespace           = "AWS/Lambda"
   period              = 300
   statistic           = "Average"
-  threshold           = 30000  # 30 seconds in ms
+  threshold           = 30000 # 30 seconds in ms
   alarm_description   = "Alert when Lambda execution time exceeds 30s"
   alarm_actions       = [aws_sns_topic.errors.arn]
 
@@ -288,7 +288,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_response_time" {
   namespace           = "AWS/ApplicationELB"
   period              = 300
   statistic           = "Average"
-  threshold           = 1.0  # 1 second
+  threshold           = 1.0 # 1 second
   alarm_description   = "Alert when response time exceeds 1 second"
   alarm_actions       = [aws_sns_topic.errors.arn]
 
@@ -301,10 +301,10 @@ resource "aws_cloudwatch_metric_alarm" "alb_response_time" {
 resource "aws_cloudwatch_composite_alarm" "application_health" {
   count = var.environment == "prod" ? 1 : 0
 
-  alarm_name          = "${var.project_name}-application-health-${var.environment}"
-  alarm_description   = "Composite alarm for overall application health"
-  actions_enabled     = true
-  alarm_actions       = [aws_sns_topic.errors.arn]
+  alarm_name        = "${var.project_name}-application-health-${var.environment}"
+  alarm_description = "Composite alarm for overall application health"
+  actions_enabled   = true
+  alarm_actions     = [aws_sns_topic.errors.arn]
 
   alarm_rule = join(" OR ", [
     "arn:aws:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:${aws_cloudwatch_metric_alarm.ecs_cpu_high.alarm_name}",

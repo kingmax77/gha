@@ -1,8 +1,8 @@
 # Staging Environment Configuration
-environment      = "staging"
-aws_region       = "us-east-1"
-project_name     = "my-app"
-vpc_cidr         = "10.1.0.0/16"
+environment        = "staging"
+aws_region         = "us-east-1"
+project_name       = "my-app"
+vpc_cidr           = "10.1.0.0/16"
 availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
 # ECS Configuration

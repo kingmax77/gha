@@ -14,9 +14,9 @@ resource "aws_lambda_function" "order_processor" {
 
   environment {
     variables = {
-      ENVIRONMENT   = var.environment
-      PROJECT_NAME  = var.project_name
-      LOG_LEVEL     = "INFO"
+      ENVIRONMENT  = var.environment
+      PROJECT_NAME = var.project_name
+      LOG_LEVEL    = "INFO"
     }
   }
 
@@ -48,9 +48,9 @@ resource "aws_lambda_function" "notification_handler" {
 
   environment {
     variables = {
-      ENVIRONMENT   = var.environment
-      PROJECT_NAME  = var.project_name
-      LOG_LEVEL     = "INFO"
+      ENVIRONMENT  = var.environment
+      PROJECT_NAME = var.project_name
+      LOG_LEVEL    = "INFO"
     }
   }
 
@@ -82,9 +82,9 @@ resource "aws_lambda_function" "data_transformer" {
 
   environment {
     variables = {
-      ENVIRONMENT   = var.environment
-      PROJECT_NAME  = var.project_name
-      LOG_LEVEL     = "INFO"
+      ENVIRONMENT  = var.environment
+      PROJECT_NAME = var.project_name
+      LOG_LEVEL    = "INFO"
     }
   }
 
@@ -106,7 +106,7 @@ resource "aws_lambda_function" "data_transformer" {
 resource "aws_lambda_layer_version" "dependencies" {
   filename   = "lambda_layer.zip"
   layer_name = "${var.project_name}-dependencies-${var.environment}"
-  
+
   source_code_hash = filebase64sha256("lambda_layer.zip")
 
   compatible_runtimes = ["python3.9", "python3.10", "python3.11"]
@@ -126,9 +126,9 @@ resource "aws_lambda_provisioned_concurrency_config" "order_processor" {
 
 # ===== LAMBDA ALIASES =====
 resource "aws_lambda_alias" "order_processor_live" {
-  name            = "live"
-  description     = "Live alias for order processor"
-  function_name   = aws_lambda_function.order_processor.function_name
+  name             = "live"
+  description      = "Live alias for order processor"
+  function_name    = aws_lambda_function.order_processor.function_name
   function_version = aws_lambda_function.order_processor.version
 }
 
@@ -151,8 +151,8 @@ resource "aws_security_group" "lambda" {
 
 # ===== STEP FUNCTIONS STATE MACHINE =====
 resource "aws_sfn_state_machine" "order_workflow" {
-  name       = "${var.project_name}-order-workflow-${var.environment}"
-  role_arn   = aws_iam_role.step_functions_role.arn
+  name     = "${var.project_name}-order-workflow-${var.environment}"
+  role_arn = aws_iam_role.step_functions_role.arn
   definition = jsonencode({
     Comment = "Order processing workflow"
     StartAt = "ProcessOrder"
@@ -163,10 +163,10 @@ resource "aws_sfn_state_machine" "order_workflow" {
         Next     = "ParallelProcessing"
         Retry = [
           {
-            ErrorEquals = ["States.TaskFailed"]
+            ErrorEquals     = ["States.TaskFailed"]
             IntervalSeconds = 1
-            MaxAttempts = 2
-            BackoffRate = 2.0
+            MaxAttempts     = 2
+            BackoffRate     = 2.0
           }
         ]
         Catch = [
@@ -213,7 +213,7 @@ resource "aws_sfn_state_machine" "order_workflow" {
       }
 
       HandleOrderError = {
-        Type = "Task"
+        Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
           TopicArn = aws_sns_topic.errors.arn
@@ -223,7 +223,7 @@ resource "aws_sfn_state_machine" "order_workflow" {
       }
 
       OrderFailed = {
-        Type = "Fail"
+        Type  = "Fail"
         Error = "OrderProcessingFailed"
         Cause = "Failed to process order"
       }
@@ -259,9 +259,9 @@ resource "aws_sns_topic_subscription" "errors_email" {
 
 # ===== LAMBDA EVENT SOURCE MAPPINGS =====
 resource "aws_lambda_event_source_mapping" "order_processor_sqs" {
-  event_source_arn  = aws_sqs_queue.orders.arn
-  function_name     = aws_lambda_function.order_processor.arn
-  batch_size        = 10
+  event_source_arn                   = aws_sqs_queue.orders.arn
+  function_name                      = aws_lambda_function.order_processor.arn
+  batch_size                         = 10
   maximum_batching_window_in_seconds = 5
 
   function_response_types = ["ReportBatchItemFailures"]
@@ -271,10 +271,10 @@ resource "aws_lambda_event_source_mapping" "order_processor_sqs" {
 
 # ===== SQS QUEUE =====
 resource "aws_sqs_queue" "orders" {
-  name                      = "${var.project_name}-orders-${var.environment}"
-  delay_seconds             = 0
-  max_message_size          = 262144
-  message_retention_seconds = 86400
+  name                       = "${var.project_name}-orders-${var.environment}"
+  delay_seconds              = 0
+  max_message_size           = 262144
+  message_retention_seconds  = 86400
   visibility_timeout_seconds = 300
 
   redrive_policy = jsonencode({
@@ -289,7 +289,7 @@ resource "aws_sqs_queue" "orders" {
 
 resource "aws_sqs_queue" "orders_dlq" {
   name                      = "${var.project_name}-orders-dlq-${var.environment}"
-  message_retention_seconds = 1209600  # 14 days
+  message_retention_seconds = 1209600 # 14 days
 
   tags = {
     Name = "${var.project_name}-orders-dlq"

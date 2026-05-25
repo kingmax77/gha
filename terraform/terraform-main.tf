@@ -9,9 +9,9 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "kings3bucketterraform67"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket  = "kings3bucketterraform67"
+    region  = "us-east-1"
+    encrypt = true
 
   }
 }
@@ -103,8 +103,8 @@ resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
   route {
-    cidr_block      = "0.0.0.0/0"
-    gateway_id      = aws_internet_gateway.main.id
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
   }
 
   tags = {
@@ -280,10 +280,10 @@ resource "aws_ecr_lifecycle_policy" "app" {
         rulePriority = 2
         description  = "Expire untagged images after 7 days"
         selection = {
-          tagStatus       = "untagged"
-          countType       = "sinceImagePushed"
-          countUnit       = "days"
-          countNumber     = 7
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
         }
         action = {
           type = "expire"
