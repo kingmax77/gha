@@ -110,7 +110,7 @@ jobs:
       - name: Terraform init
         run: |
           cd terraform
-          terraform init -backend=false
+          terraform init -backend=false -upgrade
 
       - name: Terraform validate
         run: |
