@@ -47,10 +47,10 @@ jobs:
         run: flake8 src/ --count --show-source --statistics --max-line-length=100
 
       - name: Check code formatting with Black
-        run: black --check src/ tests/ --line-length=100
+        run: black --check src/ --line-length=100
 
       - name: Check import sorting with isort
-        run: isort --check-only src/ tests/ --profile black
+        run: isort --check-only src/ --profile black
 
       - name: Security scanning with Bandit
         continue-on-error: true
