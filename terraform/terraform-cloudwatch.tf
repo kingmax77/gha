@@ -317,7 +317,7 @@ resource "aws_cloudwatch_composite_alarm" "application_health" {
 
 # ===== METRIC FILTERS FOR CUSTOM METRICS =====
 
-resource "aws_cloudwatch_log_group_metric_filter" "error_count" {
+resource "aws_logs_metric_filter" "error_count" {
   name           = "${var.project_name}-error-count-${var.environment}"
   log_group_name = aws_cloudwatch_log_group.ecs.name
   filter_pattern = "[time, request_id, level = ERROR, ...]"
@@ -329,7 +329,7 @@ resource "aws_cloudwatch_log_group_metric_filter" "error_count" {
   }
 }
 
-resource "aws_cloudwatch_log_group_metric_filter" "warning_count" {
+resource "aws_logs_metric_filter" "warning_count" {
   name           = "${var.project_name}-warning-count-${var.environment}"
   log_group_name = aws_cloudwatch_log_group.ecs.name
   filter_pattern = "[time, request_id, level = WARNING, ...]"

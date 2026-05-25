@@ -107,7 +107,6 @@ resource "aws_lambda_layer_version" "dependencies" {
   filename   = "lambda_layer.zip"
   layer_name = "${var.project_name}-dependencies-${var.environment}"
 
-  source_code_hash = filebase64sha256("lambda_layer.zip")
 
   compatible_runtimes = ["python3.9", "python3.10", "python3.11"]
 
