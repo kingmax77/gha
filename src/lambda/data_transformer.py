@@ -41,19 +41,14 @@ class DataTransformer:
     def calculate_metrics(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate metrics from order items"""
         total_quantity = sum(item.get("quantity", 0) for item in items)
-        total_value = sum(
-            item.get("price", 0) * item.get("quantity", 0)
-            for item in items
-        )
-        average_price = (
-            total_value / total_quantity if total_quantity > 0 else 0
-        )
+        total_value = sum(item.get("price", 0) * item.get("quantity", 0) for item in items)
+        average_price = total_value / total_quantity if total_quantity > 0 else 0
 
         return {
             "total_quantity": total_quantity,
             "total_value": total_value,
             "average_price": round(average_price, 2),
-            "item_count": len(items)
+            "item_count": len(items),
         }
 
     @staticmethod
@@ -62,15 +57,11 @@ class DataTransformer:
         enriched_order = order.copy()
 
         # Add calculated metrics
-        items_metrics = DataTransformer.calculate_metrics(
-            order.get("items", [])
-        )
+        items_metrics = DataTransformer.calculate_metrics(order.get("items", []))
         enriched_order.update(items_metrics)
 
         # Add hash for deduplication
-        order_hash = hashlib.sha256(
-            json.dumps(order, sort_keys=True).encode()
-        ).hexdigest()
+        order_hash = hashlib.sha256(json.dumps(order, sort_keys=True).encode()).hexdigest()
         enriched_order["order_hash"] = order_hash
 
         # Add transformation metadata
@@ -82,8 +73,7 @@ class DataTransformer:
             items_metrics["total_value"]
         )
         enriched_order["priority"] = DataTransformer.calculate_priority(
-            items_metrics["total_value"],
-            order.get("customer_status", "standard")
+            items_metrics["total_value"], order.get("customer_status", "standard")
         )
 
         return enriched_order
@@ -173,7 +163,7 @@ def validate_transformed_data(data: Dict[str, Any]) -> bool:
         "total_value",
         "order_hash",
         "order_size",
-        "priority"
+        "priority",
     ]
 
     return all(field in data for field in required_fields)
@@ -202,7 +192,7 @@ def save_to_analytics(order: Dict[str, Any]) -> None:
                 "item_count": order.get("item_count"),
                 "status": order.get("status", "unknown"),
                 "environment": ENVIRONMENT,
-                "order_hash": order.get("order_hash")
+                "order_hash": order.get("order_hash"),
             }
 
             # Save to DynamoDB
@@ -240,8 +230,8 @@ def save_to_s3_parquet(order: Dict[str, Any]) -> str:
                 Metadata={
                     "order_id": order.get("order_id"),
                     "transformed_at": order.get("transformed_at"),
-                    "order_hash": order.get("order_hash")
-                }
+                    "order_hash": order.get("order_hash"),
+                },
             )
 
             logger.debug(f"Order saved to S3: {s3_key}")
@@ -291,7 +281,7 @@ def generate_statistics(transformed_orders: List[Dict[str, Any]]) -> Dict[str, A
             "total_items": total_items,
             "average_order_value": round(average_order_value, 2),
             "size_distribution": size_counts,
-            "priority_distribution": priority_counts
+            "priority_distribution": priority_counts,
         }
 
 
@@ -308,23 +298,18 @@ def publish_metrics(stats: Dict[str, Any]) -> None:
                 {
                     "MetricName": "TotalOrderValue",
                     "Value": stats.get("total_value", 0),
-                    "Unit": "None"
+                    "Unit": "None",
                 },
                 {
                     "MetricName": "AverageOrderValue",
                     "Value": stats.get("average_order_value", 0),
-                    "Unit": "None"
+                    "Unit": "None",
                 },
-                {
-                    "MetricName": "TotalItems",
-                    "Value": stats.get("total_items", 0),
-                    "Unit": "Count"
-                }
+                {"MetricName": "TotalItems", "Value": stats.get("total_items", 0), "Unit": "Count"},
             ]
 
             cloudwatch.put_metric_data(
-                Namespace=f"{PROJECT_NAME}/{ENVIRONMENT}",
-                MetricData=metric_data
+                Namespace=f"{PROJECT_NAME}/{ENVIRONMENT}", MetricData=metric_data
             )
 
             logger.debug("Metrics published to CloudWatch")
@@ -377,7 +362,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "s3_key": s3_key,
             "transformed_data": transformed_order,
             "statistics": stats,
-            "message": "Data transformation completed successfully"
+            "message": "Data transformation completed successfully",
         }
 
     except Exception as e:
@@ -395,9 +380,9 @@ if __name__ == "__main__":
         "customer_status": "premium",
         "items": [
             {"sku": "ITEM-1", "quantity": 2, "price": 29.99},
-            {"sku": "ITEM-2", "quantity": 1, "price": 49.99}
+            {"sku": "ITEM-2", "quantity": 1, "price": 49.99},
         ],
-        "status": "confirmed"
+        "status": "confirmed",
     }
 
     result = lambda_handler(test_event, None)

@@ -30,7 +30,9 @@ metrics = Metrics()
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 PROJECT_NAME = os.environ.get("PROJECT_NAME", "my-app")
 DYNAMODB_TABLE = f"{PROJECT_NAME}-orders-{ENVIRONMENT}"
-SFN_STATE_MACHINE = f"arn:aws:states:us-east-1:ACCOUNT_ID:stateMachine:{PROJECT_NAME}-order-workflow-{ENVIRONMENT}"
+SFN_STATE_MACHINE = (
+    f"arn:aws:states:us-east-1:ACCOUNT_ID:stateMachine:{PROJECT_NAME}-order-workflow-{ENVIRONMENT}"
+)
 
 # DynamoDB table
 orders_table = dynamodb.Table(DYNAMODB_TABLE)
@@ -95,7 +97,7 @@ def process_order(sqs_message: Dict[str, Any]) -> Dict[str, Any]:
                 name="OrderProcessed",
                 unit="Count",
                 value=1,
-                namespace=f"{PROJECT_NAME}/{ENVIRONMENT}"
+                namespace=f"{PROJECT_NAME}/{ENVIRONMENT}",
             )
 
             # Trigger Step Functions workflow
@@ -107,7 +109,7 @@ def process_order(sqs_message: Dict[str, Any]) -> Dict[str, Any]:
                 "statusCode": 200,
                 "order_id": order_id,
                 "execution_arn": execution_result.get("executionArn"),
-                "message": "Order processed successfully"
+                "message": "Order processed successfully",
             }
 
         except json.JSONDecodeError as e:
@@ -122,7 +124,7 @@ def process_order(sqs_message: Dict[str, Any]) -> Dict[str, Any]:
                 name="OrderProcessingError",
                 unit="Count",
                 value=1,
-                namespace=f"{PROJECT_NAME}/{ENVIRONMENT}"
+                namespace=f"{PROJECT_NAME}/{ENVIRONMENT}",
             )
             raise
 
@@ -158,9 +160,7 @@ def trigger_workflow(order: Dict[str, Any]) -> Dict[str, Any]:
             execution_name = f"{order['order_id']}-{datetime.utcnow().timestamp()}"
 
             response = sfn_client.start_execution(
-                stateMachineArn=SFN_STATE_MACHINE,
-                name=execution_name,
-                input=json.dumps(order)
+                stateMachineArn=SFN_STATE_MACHINE, name=execution_name, input=json.dumps(order)
             )
 
             logger.info(f"Workflow triggered: {response['executionArn']}")
@@ -181,9 +181,9 @@ def record_metrics() -> None:
                     "MetricName": "OrderProcessingDuration",
                     "Value": 100,  # milliseconds (example)
                     "Unit": "Milliseconds",
-                    "Timestamp": datetime.utcnow()
+                    "Timestamp": datetime.utcnow(),
                 }
-            ]
+            ],
         )
     except Exception as e:
         logger.error(f"Failed to record metrics: {str(e)}")
@@ -208,13 +208,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Process messages with batch processor for error handling
     results = processor.process(
-        records=sqs_event.records,
-        handler=process_order,
-        errors_as_response=True
+        records=sqs_event.records, handler=process_order, errors_as_response=True
     )
 
     # Log batch processing results
-    logger.info(f"Batch processing complete. Successful: {len(results['successful'])}, Failed: {len(results['failed'])}")
+    logger.info(
+        f"Batch processing complete. Successful: {len(results['successful'])}, Failed: {len(results['failed'])}"
+    )
 
     # Record metrics
     record_metrics()
@@ -226,7 +226,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "statusCode": 200,
         "processed": len(results["successful"]),
         "failed": len(results["failed"]),
-        "results": results
+        "results": results,
     }
 
 
@@ -236,14 +236,14 @@ if __name__ == "__main__":
         "Records": [
             {
                 "messageId": "test-1",
-                "body": json.dumps({
-                    "order_id": "ORD-001",
-                    "customer_id": "CUST-123",
-                    "items": [
-                        {"sku": "ITEM-1", "quantity": 2, "price": 29.99}
-                    ],
-                    "amount": 59.98
-                })
+                "body": json.dumps(
+                    {
+                        "order_id": "ORD-001",
+                        "customer_id": "CUST-123",
+                        "items": [{"sku": "ITEM-1", "quantity": 2, "price": 29.99}],
+                        "amount": 59.98,
+                    }
+                ),
             }
         ]
     }

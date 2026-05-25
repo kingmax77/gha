@@ -38,6 +38,7 @@ notifications_table = dynamodb.Table(NOTIFICATION_TABLE)
 
 class NotificationType(str, Enum):
     """Notification types"""
+
     ORDER_CONFIRMED = "order_confirmed"
     ORDER_SHIPPED = "order_shipped"
     ORDER_DELIVERED = "order_delivered"
@@ -47,6 +48,7 @@ class NotificationType(str, Enum):
 
 class NotificationChannel(str, Enum):
     """Notification channels"""
+
     EMAIL = "email"
     SMS = "sms"
     PUSH = "push"
@@ -73,7 +75,7 @@ class NotificationHandler:
                     </body>
                 </html>
             """,
-            "text_body": f"Order confirmed: {order.get('order_id')} - Total: ${order.get('total', 0):.2f}"
+            "text_body": f"Order confirmed: {order.get('order_id')} - Total: ${order.get('total', 0):.2f}",
         }
 
     @staticmethod
@@ -92,7 +94,7 @@ class NotificationHandler:
                     </body>
                 </html>
             """,
-            "text_body": f"Order shipped: {order.get('order_id')} - Tracking: {order.get('tracking_number', 'N/A')}"
+            "text_body": f"Order shipped: {order.get('order_id')} - Tracking: {order.get('tracking_number', 'N/A')}",
         }
 
     @staticmethod
@@ -111,16 +113,11 @@ class NotificationHandler:
                     </body>
                 </html>
             """,
-            "text_body": f"Order processing failed: {order.get('order_id')} - Error: {error}"
+            "text_body": f"Order processing failed: {order.get('order_id')} - Error: {error}",
         }
 
 
-def send_email(
-    recipient: str,
-    subject: str,
-    html_body: str,
-    text_body: str
-) -> Dict[str, Any]:
+def send_email(recipient: str, subject: str, html_body: str, text_body: str) -> Dict[str, Any]:
     """
     Send email notification using SES
 
@@ -140,11 +137,8 @@ def send_email(
                 Destination={"ToAddresses": [recipient]},
                 Message={
                     "Subject": {"Data": subject},
-                    "Body": {
-                        "Html": {"Data": html_body},
-                        "Text": {"Data": text_body}
-                    }
-                }
+                    "Body": {"Html": {"Data": html_body}, "Text": {"Data": text_body}},
+                },
             )
             logger.info(f"Email sent successfully. MessageId: {response['MessageId']}")
             metrics.add_metric("EmailSent", 1, "Count")
@@ -156,10 +150,7 @@ def send_email(
             raise
 
 
-def send_sns_notification(
-    message: str,
-    subject: str = None
-) -> Dict[str, Any]:
+def send_sns_notification(message: str, subject: str = None) -> Dict[str, Any]:
     """
     Send SNS notification
 
@@ -173,9 +164,7 @@ def send_sns_notification(
     with tracer.capture_span("send_sns"):
         try:
             response = sns_client.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Message=message,
-                Subject=subject or "Notification"
+                TopicArn=SNS_TOPIC_ARN, Message=message, Subject=subject or "Notification"
             )
             logger.info(f"SNS notification sent. MessageId: {response['MessageId']}")
             metrics.add_metric("SNSNotificationSent", 1, "Count")
@@ -192,7 +181,7 @@ def save_notification_record(
     notification_type: NotificationType,
     channel: NotificationChannel,
     recipient: str,
-    status: str
+    status: str,
 ) -> None:
     """
     Save notification record to DynamoDB
@@ -215,7 +204,7 @@ def save_notification_record(
                     "recipient": recipient,
                     "status": status,
                     "timestamp": datetime.utcnow().isoformat(),
-                    "environment": ENVIRONMENT
+                    "environment": ENVIRONMENT,
                 }
             )
             logger.debug(f"Notification record saved for order: {order_id}")
@@ -252,14 +241,13 @@ def process_notification(event: Dict[str, Any]) -> Dict[str, Any]:
             notification_content = NotificationHandler.format_order_shipped(event)
         elif notification_type_enum == NotificationType.ORDER_FAILED:
             notification_content = NotificationHandler.format_order_failed(
-                event,
-                event.get("error", "Unknown error")
+                event, event.get("error", "Unknown error")
             )
         else:
             notification_content = {
                 "subject": f"Order Notification - {order_id}",
                 "html_body": json.dumps(event),
-                "text_body": json.dumps(event)
+                "text_body": json.dumps(event),
             }
 
         # Send email notification
@@ -268,21 +256,16 @@ def process_notification(event: Dict[str, Any]) -> Dict[str, Any]:
                 recipient=customer_email,
                 subject=notification_content["subject"],
                 html_body=notification_content["html_body"],
-                text_body=notification_content["text_body"]
+                text_body=notification_content["text_body"],
             )
             save_notification_record(
-                order_id,
-                notification_type_enum,
-                NotificationChannel.EMAIL,
-                customer_email,
-                "sent"
+                order_id, notification_type_enum, NotificationChannel.EMAIL, customer_email, "sent"
             )
 
         # Send SNS notification for critical events
         if notification_type_enum in [NotificationType.ORDER_FAILED]:
             send_sns_notification(
-                message=notification_content["text_body"],
-                subject=notification_content["subject"]
+                message=notification_content["text_body"], subject=notification_content["subject"]
             )
 
         metrics.add_metric("NotificationProcessed", 1, "Count")
@@ -291,7 +274,7 @@ def process_notification(event: Dict[str, Any]) -> Dict[str, Any]:
             "statusCode": 200,
             "order_id": order_id,
             "notification_type": notification_type,
-            "message": "Notification sent successfully"
+            "message": "Notification sent successfully",
         }
 
     except Exception as e:
@@ -334,7 +317,7 @@ if __name__ == "__main__":
         "customer_phone": "+1234567890",
         "notification_type": "order_confirmed",
         "total": 99.99,
-        "status": "confirmed"
+        "status": "confirmed",
     }
 
     result = lambda_handler(test_event, None)
