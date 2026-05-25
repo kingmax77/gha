@@ -99,13 +99,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set env Variable
-        run: export TENV_VALIDATION=sha
-
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.6.1
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive terraform/
@@ -119,7 +116,6 @@ jobs:
         run: |
           cd terraform
           terraform validate
-
   # ===== BUILD DOCKER IMAGE =====
   build-image:
     name: Build Docker Image
