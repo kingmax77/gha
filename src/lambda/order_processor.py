@@ -10,10 +10,10 @@ from datetime import datetime
 from typing import Any, Dict
 
 import boto3
-from aws_lambda_powertools import Logger, Tracer, Metrics
-from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSEvent
+from aws_lambda_powertools import Logger, Metrics, Tracer
 from aws_lambda_powertools.utilities.batch import BatchProcessor, EventType
 from aws_lambda_powertools.utilities.batch.exceptions import BatchProcessingError
+from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSEvent
 
 # Initialize AWS SDK clients
 dynamodb = boto3.resource("dynamodb")

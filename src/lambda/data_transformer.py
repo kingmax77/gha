@@ -3,15 +3,15 @@ Data Transformer Lambda Function
 Transforms and enriches order data for analytics and reporting
 """
 
+import hashlib
 import json
 import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List
-import hashlib
 
 import boto3
-from aws_lambda_powertools import Logger, Tracer, Metrics
+from aws_lambda_powertools import Logger, Metrics, Tracer
 from botocore.exceptions import ClientError
 
 # Initialize AWS SDK clients

@@ -7,11 +7,11 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict
 from enum import Enum
+from typing import Any, Dict
 
 import boto3
-from aws_lambda_powertools import Logger, Tracer, Metrics
+from aws_lambda_powertools import Logger, Metrics, Tracer
 from botocore.exceptions import ClientError
 
 # Initialize AWS SDK clients

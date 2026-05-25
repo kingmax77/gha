@@ -3,17 +3,17 @@ Flask application for ECS service
 Handles API requests and orchestrates order processing
 """
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, Tuple
 
 import boto3
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 from dotenv import load_dotenv
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
